@@ -13,7 +13,9 @@ __pycache__/
 # Streamlit should load only the final models.
 datasets/*.csv
 datasets/*.npy
-checkpoints/
+checkpoints/*
+!checkpoints/*.pth
+!checkpoints/*.pkl
 
 # Logs
 *.log
