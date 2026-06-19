@@ -1,0 +1,19 @@
+# Virtual environments
+.venv/
+env/
+venv/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# Large datasets and checkpoints
+# Streamlit should load only the final models.
+datasets/*.csv
+datasets/*.npy
+checkpoints/
+
+# Logs
+*.log
