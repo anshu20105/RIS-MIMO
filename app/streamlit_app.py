@@ -14,8 +14,14 @@ import os
 import numpy as np
 import pandas as pd
 
-# Ensure app/ is on the path
-sys.path.insert(0, os.path.dirname(__file__))
+# --- Ensure app/ and project root are on the path for Streamlit Cloud deployment ---
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+# ----------------------------------------------------------------------------
 
 import streamlit as st
 
