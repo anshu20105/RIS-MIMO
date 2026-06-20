@@ -26,6 +26,7 @@ COLOR_GREEN     = "#48CFAD"
 COLOR_PURPLE    = "#6C63FF"
 COLOR_PINK      = "#FF6B6B"
 COLOR_YELLOW    = "#FFCE54"
+COLOR_ORANGE    = "#FC6E51"
 
 
 def _base_layout(fig, title="", xaxis="", yaxis="", height=420):
@@ -190,27 +191,28 @@ def plot_capacity_vs_freq(model, scalers, base_params):
 # ------------------------------------------------------------------ #
 # E. Rx Antenna Correlation: magnitude + phase subplots
 # ------------------------------------------------------------------ #
-def compute_rx_correlation_matrix(y_power, n_rx, n_samples=5000):
+def compute_rx_correlation_matrix(y_power, rx_coords, n_samples=5000):
     """
     Compute the full NxN Rx correlation matrix R where R[m,n] = E[y_m * y_n*].
     Returns complex ndarray of shape (n_rx, n_rx).
     """
-    y_samples = generate_rx_complex_samples(y_power, n_rx, n_samples)
+    y_samples = generate_rx_complex_samples(y_power, rx_coords, n_samples)
     # R[m,n] = mean over samples of y_m * conj(y_n)
     R = (y_samples @ y_samples.conj().T) / n_samples
     return R
 
 
-def plot_rx_correlation(y_power, n_rx, m, n):
+def plot_rx_correlation(y_power, rx_coords, m, n):
     """
     Two-panel plot: correlation magnitude and phase between Rx antennas m and n.
     R_mn = E[y_m * conj(y_n)] computed over Monte-Carlo samples.
     """
+    n_rx = rx_coords.shape[0]
     n_rx = max(n_rx, 2)
     m = min(m, n_rx - 1)
     n = min(n, n_rx - 1)
 
-    R = compute_rx_correlation_matrix(y_power, n_rx, n_samples=8000)
+    R = compute_rx_correlation_matrix(y_power, rx_coords, n_samples=8000)
     R_mn = R[m, n]
     mag   = abs(R_mn)
     phase = np.angle(R_mn, deg=True)
@@ -265,12 +267,13 @@ def plot_rx_correlation(y_power, n_rx, m, n):
     return fig
 
 
-def plot_rx_correlation_heatmap(y_power, n_rx):
+def plot_rx_correlation_heatmap(y_power, rx_coords):
     """
     NxN heatmap of |R_mn| values for all Rx antenna pairs.
     """
+    n_rx = rx_coords.shape[0]
     n_rx = max(n_rx, 2)
-    R = compute_rx_correlation_matrix(y_power, n_rx, n_samples=8000)
+    R = compute_rx_correlation_matrix(y_power, rx_coords, n_samples=8000)
     mag_matrix = np.abs(R)
 
     labels = [f"Rx{i}" for i in range(n_rx)]
@@ -282,7 +285,7 @@ def plot_rx_correlation_heatmap(y_power, n_rx):
         text=[[f"{mag_matrix[i, j]:.3f}" for j in range(n_rx)] for i in range(n_rx)],
         texttemplate="%{text}",
         textfont=dict(size=11),
-        colorbar=dict(title="| R_mn |", titlefont=dict(color=COLOR_SECONDARY),
+        colorbar=dict(title=dict(text="| R_mn |", font=dict(color=COLOR_SECONDARY)),
                       tickfont=dict(color=COLOR_SECONDARY)),
     ))
     fig.update_layout(
@@ -297,7 +300,58 @@ def plot_rx_correlation_heatmap(y_power, n_rx):
 
 
 # ------------------------------------------------------------------ #
-# F. Tornado Chart for Sensitivity Analysis
+# F. Array Geometry Plot
+# ------------------------------------------------------------------ #
+def plot_array_geometry(tx_coords, rx_coords):
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=["Tx Array Geometry", "Rx Array Geometry"],
+    )
+
+    # Tx Scatter
+    tx_labels = [str(i) for i in range(len(tx_coords))]
+    fig.add_trace(go.Scatter(
+        x=tx_coords[:, 0], y=tx_coords[:, 1],
+        mode="markers+text",
+        name="Tx Antenna",
+        text=tx_labels,
+        textposition="middle center",
+        textfont=dict(color="white", size=11),
+        marker=dict(size=24, color=COLOR_CYAN, line=dict(color=COLOR_PRIMARY, width=2))
+    ), row=1, col=1)
+
+    # Rx Scatter
+    rx_labels = [str(i) for i in range(len(rx_coords))]
+    fig.add_trace(go.Scatter(
+        x=rx_coords[:, 0], y=rx_coords[:, 1],
+        mode="markers+text",
+        name="Rx Antenna",
+        text=rx_labels,
+        textposition="middle center",
+        textfont=dict(color="white", size=11),
+        marker=dict(size=24, color=COLOR_ORANGE, line=dict(color=COLOR_PRIMARY, width=2))
+    ), row=1, col=2)
+
+    fig.update_layout(
+        template=_TEMPLATE, height=420,
+        title=dict(text="Physical Array Coordinate Mapping (Units: λ)", font=dict(size=16, color=COLOR_PRIMARY)),
+        showlegend=False,
+        margin=dict(l=50, r=50, t=70, b=50),
+        font=dict(family="Inter, sans-serif", color=COLOR_SECONDARY),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    
+    # Scale axes equally and optionally reverse Y so 0 is at top-left visually
+    fig.update_xaxes(title_text="x (λ)", scaleanchor="y1", scaleratio=1, row=1, col=1)
+    fig.update_yaxes(title_text="y (λ)", autorange="reversed", row=1, col=1)
+    fig.update_xaxes(title_text="x (λ)", scaleanchor="y2", scaleratio=1, row=1, col=2)
+    fig.update_yaxes(title_text="y (λ)", autorange="reversed", row=1, col=2)
+
+    return fig
+
+# ------------------------------------------------------------------ #
+# G. Tornado Chart for Sensitivity Analysis
 # ------------------------------------------------------------------ #
 def plot_tornado_chart(sensitivity_data: dict, target_metric: str = "SE"):
     """

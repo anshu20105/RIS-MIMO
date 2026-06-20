@@ -20,12 +20,13 @@ sys.path.insert(0, os.path.dirname(__file__))
 import streamlit as st
 
 from model_loader import load_model_and_scalers
-from inference import predict, generate_y_distribution
+from inference import predict, generate_y_distribution, generate_antenna_coordinates
 from visualizations import (
     plot_y_kde,
     plot_se_vs_ris,
     plot_ber_vs_snr,
     plot_capacity_vs_freq,
+    plot_array_geometry,
     plot_sensitivity_radial,
     plot_comparison_radar,
     plot_rx_correlation,
@@ -130,46 +131,63 @@ with st.sidebar:
 
     # ── Antenna Configuration ─────────────────────────────────────────
     with st.expander("ANTENNA CONFIGURATION", expanded=True):
-        # Number of antennas
-        col_a, col_b = st.columns(2)
-        with col_a:
-            n_tx = st.select_slider("N_t (Tx)", options=[2, 4, 8], value=4, key="n_tx")
-        with col_b:
-            n_rx = st.select_slider("N_r (Rx)", options=[2, 4, 8], value=4, key="n_rx")
-
-        n_ris = st.select_slider("RIS Elements (N)", options=[8, 16, 32, 64, 128], value=32, key="n_ris")
-
-        st.markdown("<hr style='border-color:rgba(255,255,255,0.08);margin:8px 0;'>", unsafe_allow_html=True)
-
-        # ── Tx Array Type ──
-        tx_array_type = st.selectbox("Tx Array Type", ["Linear Array", "Rectangular Array"],
-                                     index=0, key="tx_array_type")
+        st.markdown("<h4 style='color:#FFFFFF;font-size:0.95rem;margin-bottom:0;'>Transmitter (Tx) Array</h4>", unsafe_allow_html=True)
+        tx_array_type = st.selectbox("Tx Array Type", ["Linear Array", "Rectangular Array"], index=0, key="tx_array_type")
+        
         if tx_array_type == "Linear Array":
-            d_tx = st.selectbox("d (Tx, λ)", options=[0.25, 0.5, 1.0], index=1, key="d_tx")
-            dx_tx, dy_tx = d_tx, d_tx
+            col_tx1, col_tx2 = st.columns(2)
+            with col_tx1:
+                n_tx = st.select_slider("N_t (Tx Elements)", options=[2, 4, 8, 16], value=4, key="n_tx")
+            with col_tx2:
+                d_tx = st.selectbox("d (Tx, λ)", options=[0.25, 0.5, 1.0], index=1, key="d_tx")
+            tx_rows, tx_cols = 1, n_tx
+            dx_tx, dy_tx = d_tx, 0.0
         else:
             col_tx1, col_tx2 = st.columns(2)
             with col_tx1:
-                dx_tx = st.selectbox("dx (Tx, λ)", options=[0.25, 0.5, 1.0], index=1, key="dx_tx")
+                tx_rows = st.number_input("Tx Rows", min_value=1, max_value=8, value=2, step=1, key="tx_rows")
             with col_tx2:
+                tx_cols = st.number_input("Tx Columns", min_value=1, max_value=8, value=2, step=1, key="tx_cols")
+            n_tx = tx_rows * tx_cols
+            st.markdown(f"<div style='color:#A0A0B0;font-size:0.8rem;'>Total Tx Antennas: <span style='color:#00D2FF;font-weight:bold;'>{n_tx}</span></div>", unsafe_allow_html=True)
+            
+            col_dx_tx, col_dy_tx = st.columns(2)
+            with col_dx_tx:
+                dx_tx = st.selectbox("dx (Tx, λ)", options=[0.25, 0.5, 1.0], index=1, key="dx_tx")
+            with col_dy_tx:
                 dy_tx = st.selectbox("dy (Tx, λ)", options=[0.25, 0.5, 1.0], index=1, key="dy_tx")
 
-        # ── Rx Array Type ──
-        rx_array_type = st.selectbox("Rx Array Type", ["Linear Array", "Rectangular Array"],
-                                     index=0, key="rx_array_type")
+        st.markdown("<hr style='border-color:rgba(255,255,255,0.08);margin:12px 0;'>", unsafe_allow_html=True)
+        
+        st.markdown("<h4 style='color:#FFFFFF;font-size:0.95rem;margin-bottom:0;'>Receiver (Rx) Array</h4>", unsafe_allow_html=True)
+        rx_array_type = st.selectbox("Rx Array Type", ["Linear Array", "Rectangular Array"], index=0, key="rx_array_type")
+        
         if rx_array_type == "Linear Array":
-            d_rx = st.selectbox("d (Rx, λ)", options=[0.25, 0.5, 1.0], index=1, key="d_rx")
-            dx_rx, dy_rx = d_rx, d_rx
+            col_rx1, col_rx2 = st.columns(2)
+            with col_rx1:
+                n_rx = st.select_slider("N_r (Rx Elements)", options=[2, 4, 8, 16], value=4, key="n_rx")
+            with col_rx2:
+                d_rx = st.selectbox("d (Rx, λ)", options=[0.25, 0.5, 1.0], index=1, key="d_rx")
+            rx_rows, rx_cols = 1, n_rx
+            dx_rx, dy_rx = d_rx, 0.0
         else:
             col_rx1, col_rx2 = st.columns(2)
             with col_rx1:
-                dx_rx = st.selectbox("dx (Rx, λ)", options=[0.25, 0.5, 1.0], index=1, key="dx_rx")
+                rx_rows = st.number_input("Rx Rows", min_value=1, max_value=8, value=2, step=1, key="rx_rows")
             with col_rx2:
+                rx_cols = st.number_input("Rx Columns", min_value=1, max_value=8, value=2, step=1, key="rx_cols")
+            n_rx = rx_rows * rx_cols
+            st.markdown(f"<div style='color:#A0A0B0;font-size:0.8rem;'>Total Rx Antennas: <span style='color:#FC6E51;font-weight:bold;'>{n_rx}</span></div>", unsafe_allow_html=True)
+            
+            col_dx_rx, col_dy_rx = st.columns(2)
+            with col_dx_rx:
+                dx_rx = st.selectbox("dx (Rx, λ)", options=[0.25, 0.5, 1.0], index=1, key="dx_rx")
+            with col_dy_rx:
                 dy_rx = st.selectbox("dy (Rx, λ)", options=[0.25, 0.5, 1.0], index=1, key="dy_rx")
-
-        # Combine spacing for the model feature vector (use Rx spacing as the common input)
-        dx = dx_rx
-        dy = dy_rx
+        
+        st.markdown("<hr style='border-color:rgba(255,255,255,0.08);margin:12px 0;'>", unsafe_allow_html=True)
+        
+        n_ris = st.select_slider("RIS Elements (N)", options=[8, 16, 32, 64, 128], value=32, key="n_ris")
 
         theta = st.slider("Phase Shift θ (rad)", min_value=0.0, max_value=2 * np.pi,
                           value=np.pi / 4, step=0.05, format="%.2f", key="theta")
@@ -215,10 +233,20 @@ with st.sidebar:
 # =========================================================================
 # Run inference
 # =========================================================================
+# Combine spacing for the model feature vector (using rx spacing as common for PINN feature mapping if required)
+dx = dx_rx
+dy = dy_rx if rx_array_type == "Rectangular Array" else dx_rx
+
+# Generate Array geometries
+tx_coords = generate_antenna_coordinates(tx_array_type, tx_rows, tx_cols, dx_tx, dy_tx)
+rx_coords = generate_antenna_coordinates(rx_array_type, rx_rows, rx_cols, dx_rx, dy_rx)
+
 params = dict(
     freq=freq, n_tx=n_tx, n_rx=n_rx, n_ris=n_ris,
     dx=dx, dy=dy, snr_db=snr_db, theta=theta,
     d_tx_ris=d_tx_ris, d_ris_rx=d_ris_rx,
+    tx_array_type=tx_array_type, tx_rows=tx_rows, tx_cols=tx_cols, dx_tx=dx_tx, dy_tx=dy_tx,
+    rx_array_type=rx_array_type, rx_rows=rx_rows, rx_cols=rx_cols, dx_rx=dx_rx, dy_rx=dy_rx,
 )
 
 metrics = predict(model, scaler_X, scaler_yp, scaler_se, scaler_ber, device, **params)
@@ -328,11 +356,12 @@ with col_main:
         st.plotly_chart(plot_comparison_radar(baseline_metrics, metrics),
                         use_container_width=True, key="radar")
     else:
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "Signal Distribution",
             "SE vs RIS Size",
             "BER vs SNR",
             "Capacity vs Frequency",
+            "Array Geometry",
             "Rx Correlation",
         ])
 
@@ -356,8 +385,13 @@ with col_main:
             st.plotly_chart(plot_capacity_vs_freq(model, scalers, params),
                             use_container_width=True, key="cap_freq")
 
-        # ── Tab 5: Rx Correlation ───────────────────────────────────────
+        # ── Tab 5: Array Geometry ───────────────────────────────────────
         with tab5:
+            st.plotly_chart(plot_array_geometry(tx_coords, rx_coords),
+                            use_container_width=True, key="geometry_plot")
+
+        # ── Tab 6: Rx Correlation ───────────────────────────────────────
+        with tab6:
             st.markdown("#### Rx Antenna Cross-Correlation  R_mn = E[y_m · y_n*]")
 
             corr_col1, corr_col2, corr_col3 = st.columns([1, 1, 2])
@@ -376,7 +410,7 @@ with col_main:
 
             # Magnitude + phase subplots
             st.plotly_chart(
-                plot_rx_correlation(metrics["y_power"], n_rx, int(ant_m), int(ant_n)),
+                plot_rx_correlation(metrics["y_power"], rx_coords, int(ant_m), int(ant_n)),
                 use_container_width=True, key="rx_corr_bars",
             )
 
@@ -386,7 +420,7 @@ with col_main:
                 with heat_col:
                     st.markdown("##### NxN Correlation Heatmap")
                     heatmap_fig, mag_matrix, rx_labels = plot_rx_correlation_heatmap(
-                        metrics["y_power"], n_rx
+                        metrics["y_power"], rx_coords
                     )
                     st.plotly_chart(heatmap_fig, use_container_width=True, key="rx_heatmap")
 

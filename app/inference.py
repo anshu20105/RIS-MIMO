@@ -12,6 +12,7 @@ the original PINN training distribution — they are a post-hoc scaling layer.
 import numpy as np
 import torch
 from scipy.stats import rayleigh
+from scipy.special import j0
 
 # System bandwidth assumption (Hz) — standard 5G NR channel bandwidth
 BANDWIDTH_HZ = 20e6  # 20 MHz
@@ -54,7 +55,7 @@ def build_feature_vector(freq, n_tx, n_rx, n_ris, dx, dy, snr_db, theta):
 
 def predict(model, scaler_X, scaler_yp, scaler_se, scaler_ber, device,
             freq, n_tx, n_rx, n_ris, dx, dy, snr_db, theta,
-            d_tx_ris: float = 15.0, d_ris_rx: float = 15.0):
+            d_tx_ris: float = 15.0, d_ris_rx: float = 15.0, **kwargs):
     """
     Run a single forward pass and return a dict of all output metrics.
 
@@ -130,12 +131,65 @@ def generate_y_distribution(y_power, n_samples=10000):
     return rayleigh.rvs(scale=sigma, size=n_samples)
 
 
-def generate_rx_complex_samples(y_power, n_rx, n_samples=5000):
+def generate_antenna_coordinates(array_type, rows, cols, dx, dy):
     """
-    Generate complex Gaussian receive-signal samples y_m ~ CN(0, y_power).
-    Returns array of shape (n_rx, n_samples) complex.
+    Generate relative 2D positions of antennas. Returns array of shape (N, 2)
+    where N is the total number of antennas. x/y are measured in wavelengths (lambda).
     """
-    sigma = np.sqrt(max(y_power, 1e-15) / 2.0)
-    real_part = np.random.normal(0, sigma, (n_rx, n_samples))
-    imag_part = np.random.normal(0, sigma, (n_rx, n_samples))
-    return real_part + 1j * imag_part
+    if array_type == "Linear Array":
+        # rows is treated as 1, cols as the total number of elements N.
+        # Spacing is just dx along the x-axis.
+        coords = np.zeros((cols, 2))
+        coords[:, 0] = np.arange(cols) * dx
+    else:
+        # Rectangular Array
+        coords = np.zeros((rows * cols, 2))
+        for r in range(rows):
+            for c in range(cols):
+                idx = r * cols + c
+                coords[idx, 0] = c * dx
+                coords[idx, 1] = r * dy
+    return coords
+
+
+def generate_rx_complex_samples(y_power, rx_coords, n_samples=5000):
+    """
+    Generate spatially-correlated complex Gaussian receive-signal samples.
+    rx_coords: (N_rx, 2) array of coordinates in wavelengths.
+    y_power: received channel power.
+    Returns: array of shape (N_rx, n_samples) complex samples.
+    """
+    n_rx = rx_coords.shape[0]
+    sigma2 = max(y_power, 1e-15)
+
+    # Compute pairwise distance matrix D in wavelengths
+    # D_ij = sqrt((x_i - x_j)^2 + (y_i - y_j)^2)
+    D = np.zeros((n_rx, n_rx))
+    for i in range(n_rx):
+        for j in range(n_rx):
+            D[i, j] = np.linalg.norm(rx_coords[i] - rx_coords[j])
+
+    # Clarke's / Jakes' spatial correlation model: R_ij = J_0(2 * pi * d_ij / lambda)
+    # Since our D is already in units of lambda, we just multiply by 2*pi
+    R = j0(2 * np.pi * D)
+
+    # Ensure numerical stability / positive semi-definiteness for Cholesky
+    # Add a tiny ridge to the diagonal
+    R = R + 1e-9 * np.eye(n_rx)
+
+    try:
+        L = np.linalg.cholesky(R)
+    except np.linalg.LinAlgError:
+        # Fallback to eigen decomposition if Cholesky fails due to rounding
+        eigval, eigvec = np.linalg.eigh(R)
+        eigval = np.maximum(eigval, 0)
+        L = eigvec @ np.diag(np.sqrt(eigval))
+
+    # Generate independent complex samples
+    z_real = np.random.normal(0, np.sqrt(sigma2 / 2.0), (n_rx, n_samples))
+    z_imag = np.random.normal(0, np.sqrt(sigma2 / 2.0), (n_rx, n_samples))
+    z = z_real + 1j * z_imag
+
+    # Correlate them: y = L * z
+    y_correlated = L @ z
+    return y_correlated
