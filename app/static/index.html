@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIS-MIMO 3D Digital Twin</title>
+    
+    <!-- CDNs for UI and Animations -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#050814',
+                        electricBlue: '#00D9FF',
+                        accentPurple: '#7C3AED',
+                        neonCyan: '#22D3EE',
+                        neonGreen: '#00FFA3',
+                        neonRed: '#FF4A7A'
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <!-- Loaded CDNs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #050814;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+        
+        /* Glassmorphism custom components */
+        .glass-panel {
+            background: rgba(10, 15, 36, 0.45);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 217, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        
+        .glass-panel:hover {
+            border-color: rgba(0, 217, 255, 0.18);
+            box-shadow: 0 8px 32px 0 rgba(0, 217, 255, 0.05);
+        }
+        
+        .neon-glow-cyan {
+            text-shadow: 0 0 10px rgba(34, 211, 238, 0.5), 0 0 20px rgba(34, 211, 238, 0.2);
+        }
+
+        .neon-glow-green {
+            text-shadow: 0 0 10px rgba(0, 255, 163, 0.5), 0 0 20px rgba(0, 255, 163, 0.2);
+        }
+
+        .neon-glow-red {
+            text-shadow: 0 0 10px rgba(255, 74, 122, 0.5), 0 0 20px rgba(255, 74, 122, 0.2);
+        }
+
+        .neon-glow-purple {
+            text-shadow: 0 0 10px rgba(124, 58, 237, 0.5), 0 0 20px rgba(124, 58, 237, 0.2);
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(5, 8, 20, 0.5); }
+        ::-webkit-scrollbar-thumb { background: rgba(0, 217, 255, 0.2); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0, 217, 255, 0.4); }
+
+        /* Custom animations */
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.05); }
+        }
+        
+        .bg-glow-orb {
+            position: absolute;
+            width: 500px; height: 500px;
+            border-radius: 50%;
+            filter: blur(120px);
+            pointer-events: none;
+            z-index: 0;
+            animation: pulseGlow 10s infinite alternate;
+        }
+
+        /* Input Slider Stylings */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 15px; height: 15px;
+            border-radius: 50%;
+            background: #00D9FF;
+            cursor: pointer;
+            box-shadow: 0 0 8px #00D9FF;
+            transition: all 0.2s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 12px #00D9FF;
+        }
+    </style>
+</head>
+<body class="relative min-h-screen overflow-y-auto">
+
+    <!-- Background Orbs -->
+    <div class="bg-glow-orb bg-electricBlue/5 top-[10%] left-[-10%]"></div>
+    <div class="bg-glow-orb bg-accentPurple/5 bottom-[20%] right-[-10%]"></div>
+    <div class="bg-glow-orb bg-neonGreen/5 top-[50%] left-[40%]"></div>
+
+    <!-- Navigation Header -->
+    <nav class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-4 bg-darkBg/60 backdrop-blur-md border-b border-white/5 flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+            <span class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                <span class="text-electricBlue">📡</span> Digital Twin model of RIS-MIMO
+            </span>
+        </div>
+        <div class="flex items-center gap-4 text-sm text-gray-400">
+            <!-- Informational NLOS Badge -->
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-electricBlue/10 border border-electricBlue/30 rounded-full text-xs text-electricBlue cursor-help relative group shadow-[0_0_15px_rgba(0,217,255,0.15)]">
+                <span class="animate-pulse">📶</span>
+                <span class="font-semibold tracking-wide">Propagation Environment: NLOS</span>
+                <span class="absolute right-0 top-8 hidden group-hover:block bg-darkBg/95 text-white border border-white/10 px-3 py-1.5 rounded-lg text-[10px] w-64 text-center pointer-events-none shadow-xl z-50">
+                    The current Digital Twin models a RIS-assisted Non-Line-of-Sight (NLOS) environment using Rayleigh fading.
+                </span>
+            </div>
+            <span class="flex items-center gap-2 font-mono text-xs">
+                <span class="w-2 h-2 rounded-full bg-neonGreen animate-ping"></span> 
+                Live Engine
+            </span>
+        </div>
+    </nav>
+
+    <!-- Main Content Wrapper -->
+    <main class="relative z-10 pt-24 px-6 pb-12 max-w-[1800px] mx-auto grid grid-cols-1 xl:grid-cols-4 gap-6">
+        
+        <!-- Left Panel: Configurations & Inputs (1 Column width) -->
+        <div id="sidebar-panel" class="xl:col-span-1 flex flex-col gap-6">
+            <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4 max-h-[calc(100vh-8.5rem)] overflow-y-auto pr-3">
+                <div class="border-b border-white/5 pb-3">
+                    <h2 class="text-lg font-bold text-white tracking-wide uppercase">System Parameters</h2>
+                    <p class="text-xs text-gray-400">Configure antenna arrays and link setup</p>
+                </div>
+
+                <!-- Input Controls -->
+                <div class="flex flex-col gap-4">
+                    <!-- Freq selectbox -->
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-xs font-semibold text-gray-300">Carrier Frequency</label>
+                        <select id="freq" class="bg-darkBg border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:border-electricBlue outline-none">
+                            <option value="6000000000" selected>6.0 GHz (Sub-6)</option>
+                            <option value="3500000000">3.5 GHz (Sub-6)</option>
+                            <option value="26000000000">26.0 GHz (mmWave)</option>
+                        </select>
+                    </div>
+
+                    <!-- Transmitter Config -->
+                    <div class="border-t border-white/5 pt-3">
+                        <span class="text-xs font-bold text-electricBlue uppercase tracking-wide">Transmitter (Tx) Array</span>
+                        <div class="flex flex-col gap-3 mt-2">
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs text-gray-400">Tx Array Type</label>
+                                <select id="tx_array_type" class="bg-darkBg border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none">
+                                    <option value="Linear Array" selected>Linear Array</option>
+                                    <option value="Rectangular Array">Rectangular Array</option>
+                                </select>
+                            </div>
+                            <div id="tx_linear_controls" class="grid grid-cols-2 gap-3">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Tx Elements</label>
+                                    <select id="n_tx" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                        <option value="2">2</option>
+                                        <option value="4" selected>4</option>
+                                        <option value="8">8</option>
+                                        <option value="16">16</option>
+                                    </select>
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Spacing (d, λ)</label>
+                                    <select id="d_tx" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                        <option value="0.25">0.25</option>
+                                        <option value="0.5" selected>0.5</option>
+                                        <option value="1.0">1.0</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="tx_rect_controls" class="grid grid-cols-2 gap-3 hidden">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Tx Rows</label>
+                                    <input type="number" id="tx_rows" min="1" max="8" value="2" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Tx Cols</label>
+                                    <input type="number" id="tx_cols" min="1" max="8" value="2" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Receiver Config -->
+                    <div class="border-t border-white/5 pt-3">
+                        <span class="text-xs font-bold text-accentPurple uppercase tracking-wide">Receiver (Rx) Array</span>
+                        <div class="flex flex-col gap-3 mt-2">
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs text-gray-400">Rx Array Type</label>
+                                <select id="rx_array_type" class="bg-darkBg border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none">
+                                    <option value="Linear Array" selected>Linear Array</option>
+                                    <option value="Rectangular Array">Rectangular Array</option>
+                                </select>
+                            </div>
+                            <div id="rx_linear_controls" class="grid grid-cols-2 gap-3">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Rx Elements</label>
+                                    <select id="n_rx" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                        <option value="2">2</option>
+                                        <option value="4" selected>4</option>
+                                        <option value="8">8</option>
+                                        <option value="16">16</option>
+                                    </select>
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Spacing (d, λ)</label>
+                                    <select id="d_rx" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                        <option value="0.25">0.25</option>
+                                        <option value="0.5" selected>0.5</option>
+                                        <option value="1.0">1.0</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="rx_rect_controls" class="grid grid-cols-2 gap-3 hidden">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Rx Rows</label>
+                                    <input type="number" id="rx_rows" min="1" max="8" value="2" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                </div>
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-[10px] text-gray-400">Rx Cols</label>
+                                    <input type="number" id="rx_cols" min="1" max="8" value="2" class="bg-darkBg border border-white/10 rounded-lg px-2 py-1 text-xs text-white">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIS Config -->
+                    <div class="border-t border-white/5 pt-3 flex flex-col gap-3">
+                        <span class="text-xs font-bold text-neonGreen uppercase tracking-wide">RIS Configuration</span>
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-[10px] text-gray-400">
+                                <span>RIS Elements (N)</span>
+                                <span id="n_ris_val" class="text-neonGreen font-semibold">32</span>
+                            </div>
+                            <input type="range" id="n_ris" min="8" max="128" step="8" value="32">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-[10px] text-gray-400">
+                                <span>Phase Shift θ (rad)</span>
+                                <span id="theta_val" class="text-neonGreen font-semibold">0.79</span>
+                            </div>
+                            <input type="range" id="theta" min="0" max="6.28" step="0.05" value="0.79">
+                        </div>
+                    </div>
+
+                    <!-- System parameters -->
+                    <div class="border-t border-white/5 pt-3 flex flex-col gap-3">
+                        <span class="text-xs font-bold text-neonCyan uppercase tracking-wide">Channel Parameters</span>
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-[10px] text-gray-400">
+                                <span>SNR (dB)</span>
+                                <span id="snr_val" class="text-neonCyan font-semibold">10 dB</span>
+                            </div>
+                            <input type="range" id="snr_db" min="-10" max="20" step="1" value="10">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-[10px] text-gray-400">
+                                <span>Tx Center → RIS (m)</span>
+                                <span id="d_tx_ris_val" class="text-neonCyan font-semibold">15.0 m</span>
+                            </div>
+                            <input type="range" id="d_tx_ris" min="1" max="100" step="1" value="15">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between text-[10px] text-gray-400">
+                                <span>RIS → Rx Center (m)</span>
+                                <span id="d_ris_rx_val" class="text-neonCyan font-semibold">15.0 m</span>
+                            </div>
+                            <input type="range" id="d_ris_rx" min="1" max="100" step="1" value="15">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel: 3D Visualization and Status (2 Columns width) -->
+        <div class="xl:col-span-2 flex flex-col gap-6">
+            
+            <!-- 3D Scene Viewport -->
+            <div class="glass-panel rounded-2xl p-4 flex flex-col relative min-h-[490px] h-[58vh]">
+                <div class="absolute top-4 left-4 z-20 flex flex-col gap-1 bg-darkBg/80 px-3 py-2 rounded-lg border border-white/5 pointer-events-none">
+                    <span class="text-xs font-bold text-white tracking-wider uppercase">Interactive 3D Topology</span>
+                    <span class="text-[10px] text-gray-400">Drag to rotate, scroll to zoom</span>
+                </div>
+                <div id="canvas3d-container" class="w-full h-full rounded-xl overflow-hidden relative bg-black/40">
+                    <!-- WebGL Canvas will be injected here -->
+                </div>
+            </div>
+
+            <!-- Digital Twin Status Panel & Constraints -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass-panel rounded-2xl p-5 flex flex-col items-center text-center">
+                    <div id="check_shannon" class="w-12 h-12 rounded-full bg-neonGreen/10 border border-neonGreen/20 flex items-center justify-center text-neonGreen text-xl mb-3">✓</div>
+                    <h3 class="text-sm font-bold text-white uppercase">Shannon Constraint</h3>
+                    <p class="text-xs text-gray-400 mt-1">SE within physical limits satisfies Shannon capacity upper bound.</p>
+                </div>
+                <div class="glass-panel rounded-2xl p-5 flex flex-col items-center text-center">
+                    <div id="check_monotonic" class="w-12 h-12 rounded-full bg-neonGreen/10 border border-neonGreen/20 flex items-center justify-center text-neonGreen text-xl mb-3">✓</div>
+                    <h3 class="text-sm font-bold text-white uppercase">BER Monotonicity</h3>
+                    <p class="text-xs text-gray-400 mt-1">Error rate strictly decreases as configured SNR values increase.</p>
+                </div>
+                <div class="glass-panel rounded-2xl p-5 flex flex-col items-center text-center">
+                    <div id="check_power" class="w-12 h-12 rounded-full bg-neonGreen/10 border border-neonGreen/20 flex items-center justify-center text-neonGreen text-xl mb-3">✓</div>
+                    <h3 class="text-sm font-bold text-white uppercase">Power Consistency</h3>
+                    <p class="text-xs text-gray-400 mt-1">Variance of y is mathematically consistent with received power.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Analytics & Metrics (1 Column width) -->
+        <div class="xl:col-span-1 flex flex-col gap-6">
+            
+            <!-- Live KPI Metrics Cards -->
+            <div class="grid grid-cols-2 gap-4">
+                <!-- SE -->
+                <div class="glass-panel rounded-2xl p-4 flex flex-col relative overflow-hidden">
+                    <span class="text-[10px] text-gray-400 uppercase font-semibold">Spectral Eff</span>
+                    <span id="metric_se" class="text-2xl font-bold text-white neon-glow-cyan mt-1">0.000</span>
+                    <span class="text-[9px] text-gray-500 font-mono">bits/s/Hz</span>
+                </div>
+                <!-- Capacity -->
+                <div class="glass-panel rounded-2xl p-4 flex flex-col relative overflow-hidden">
+                    <span class="text-[10px] text-gray-400 uppercase font-semibold">Channel Cap</span>
+                    <span id="metric_cap" class="text-2xl font-bold text-white neon-glow-green mt-1">0.0</span>
+                    <span class="text-[9px] text-gray-500 font-mono">Mbps</span>
+                </div>
+                <!-- BER -->
+                <div class="glass-panel rounded-2xl p-4 flex flex-col relative overflow-hidden">
+                    <span class="text-[10px] text-gray-400 uppercase font-semibold">BER</span>
+                    <span id="metric_ber" class="text-2xl font-bold text-white neon-glow-red mt-1">0.00e-00</span>
+                    <span class="text-[9px] text-gray-500 font-mono">errors/bit</span>
+                </div>
+                <!-- Rx Power -->
+                <div class="glass-panel rounded-2xl p-4 flex flex-col relative overflow-hidden">
+                    <span class="text-[10px] text-gray-400 uppercase font-semibold">Rx Power</span>
+                    <span id="metric_power" class="text-2xl font-bold text-white neon-glow-purple mt-1">0.00</span>
+                    <span class="text-[9px] text-gray-500 font-mono">µW</span>
+                </div>
+            </div>
+
+            <!-- Signal distribution chart -->
+            <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+                <div class="border-b border-white/5 pb-2">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase">Received Signal Distribution</h3>
+                </div>
+                <div id="kde-chart" class="w-full h-[160px]"></div>
+            </div>
+
+            <!-- Sensitivity Analysis controls & chart -->
+            <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+                <div class="border-b border-white/5 pb-2 flex justify-between items-center">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase">Parameter Sensitivity</h3>
+                    <select id="sens_metric_select" class="bg-darkBg border border-white/10 rounded px-1 py-0.5 text-[10px] text-white">
+                        <option value="SE" selected>Spectral Eff</option>
+                        <option value="BER">BER</option>
+                        <option value="y_power">Rx Power</option>
+                    </select>
+                </div>
+                <div id="sens-chart" class="w-full h-[200px]"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Interactive script connecting backend predictions and 3D simulation -->
+    <script>
+        // ===================== THREE.JS SCENE CONFIG =====================
+        const container = document.getElementById('canvas3d-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050814, 0.015);
+        
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(0, 8, 20);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+        
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below ground
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
+        
+        const dirLight = new THREE.DirectionalLight(0x00d9ff, 1.2);
+        dirLight.position.set(5, 15, 5);
+        scene.add(dirLight);
+
+        // Ground grid
+        const gridHelper = new THREE.GridHelper(40, 40, 0x00d9ff, 0x11162d);
+        gridHelper.position.y = -2;
+        scene.add(gridHelper);
+
+        // 3D Objects mappings
+        let txGroup = new THREE.Group();
+        let rxGroup = new THREE.Group();
+        let risGroup = new THREE.Group();
+        scene.add(txGroup);
+        scene.add(rxGroup);
+        scene.add(risGroup);
+
+        txGroup.position.set(-8, 0, 0);
+        rxGroup.position.set(8, 0, 0);
+        risGroup.position.set(0, 3, -6); // RIS in the back/above
+
+        // Materials
+        const elementMat = new THREE.MeshPhysicalMaterial({
+            color: 0x00d9ff,
+            emissive: 0x005577,
+            roughness: 0.1,
+            metalness: 0.8,
+            clearcoat: 1.0
+        });
+
+        const rxMat = new THREE.MeshPhysicalMaterial({
+            color: 0x7c3aed,
+            emissive: 0x3b0a7c,
+            roughness: 0.1,
+            metalness: 0.8,
+            clearcoat: 1.0
+        });
+
+        // 3D Beam Lines
+        let lineTxRis = null;
+        let lineRisRx = null;
+        let lineDirect = null;
+
+        function updateBeams(params, metrics) {
+            // Remove previous lines
+            if (lineTxRis) scene.remove(lineTxRis);
+            if (lineRisRx) scene.remove(lineRisRx);
+            if (lineDirect) scene.remove(lineDirect);
+
+            const txPos = new THREE.Vector3(-8, 0, 0);
+            const rxPos = new THREE.Vector3(8, 0, 0);
+            const risPos = new THREE.Vector3(0, 3, -6);
+
+            // Channel beam colors based on power
+            const gainColor = new THREE.Color(0x00ffa3);
+            const thickness = Math.max(1, Math.min(6, metrics.y_power / 50));
+
+            // TX -> RIS path
+            const txRisCurve = new THREE.CatmullRomCurve3([
+                txPos,
+                new THREE.Vector3(-4, 2, -3),
+                risPos
+            ]);
+            const txRisGeo = new THREE.TubeGeometry(txRisCurve, 20, thickness * 0.05, 8, false);
+            const txRisMat = new THREE.MeshBasicMaterial({ color: 0x00d9ff, transparent: true, opacity: 0.6 });
+            lineTxRis = new THREE.Mesh(txRisGeo, txRisMat);
+            scene.add(lineTxRis);
+
+            // RIS -> RX path
+            const risRxCurve = new THREE.CatmullRomCurve3([
+                risPos,
+                new THREE.Vector3(4, 2, -3),
+                rxPos
+            ]);
+            const risRxGeo = new THREE.TubeGeometry(risRxCurve, 20, thickness * 0.05, 8, false);
+            const risRxMat = new THREE.MeshBasicMaterial({ color: 0x7c3aed, transparent: true, opacity: 0.6 });
+            lineRisRx = new THREE.Mesh(risRxGeo, risRxMat);
+            scene.add(lineRisRx);
+
+            // Direct line of sight (dashed line)
+            const points = [txPos, rxPos];
+            const directGeo = new THREE.BufferGeometry().setFromPoints(points);
+            const directMat = new THREE.LineDashedMaterial({
+                color: 0xff4a7a,
+                dashSize: 0.5,
+                gapSize: 0.3,
+            });
+            lineDirect = new THREE.Line(directGeo, directMat);
+            lineDirect.computeLineDistances();
+            scene.add(lineDirect);
+        }
+
+        function buildAntennaArrays(params) {
+            // Clear current objects
+            while(txGroup.children.length > 0) txGroup.remove(txGroup.children[0]);
+            while(rxGroup.children.length > 0) rxGroup.remove(rxGroup.children[0]);
+            while(risGroup.children.length > 0) risGroup.remove(risGroup.children[0]);
+
+            // Build TX Elements
+            const n_tx = parseInt(params.n_tx);
+            const txType = params.tx_array_type;
+            const size = 0.15;
+            
+            if (txType === "Linear Array") {
+                for (let i = 0; i < n_tx; i++) {
+                    const el = new THREE.Mesh(new THREE.CylinderGeometry(size*0.4, size*0.4, 1, 8), elementMat);
+                    el.position.set((i - (n_tx - 1) / 2) * 0.8, 0, 0);
+                    txGroup.add(el);
+                }
+            } else {
+                const rows = parseInt(params.tx_rows);
+                const cols = parseInt(params.tx_cols);
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const el = new THREE.Mesh(new THREE.CylinderGeometry(size*0.4, size*0.4, 1, 8), elementMat);
+                        el.position.set((c - (cols - 1) / 2) * 0.8, (r - (rows - 1) / 2) * 0.8, 0);
+                        txGroup.add(el);
+                    }
+                }
+            }
+
+            // Build RX Elements
+            const n_rx = parseInt(params.n_rx);
+            const rxType = params.rx_array_type;
+
+            if (rxType === "Linear Array") {
+                for (let i = 0; i < n_rx; i++) {
+                    const el = new THREE.Mesh(new THREE.CylinderGeometry(size*0.4, size*0.4, 1, 8), rxMat);
+                    el.position.set((i - (n_rx - 1) / 2) * 0.8, 0, 0);
+                    rxGroup.add(el);
+                }
+            } else {
+                const rows = parseInt(params.rx_rows);
+                const cols = parseInt(params.rx_cols);
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const el = new THREE.Mesh(new THREE.CylinderGeometry(size*0.4, size*0.4, 1, 8), rxMat);
+                        el.position.set((c - (cols - 1) / 2) * 0.8, (r - (rows - 1) / 2) * 0.8, 0);
+                        rxGroup.add(el);
+                    }
+                }
+            }
+
+            // Build RIS Surface
+            const n_ris = parseInt(params.n_ris);
+            // Show RIS as a beautiful grid of glowing panel units
+            const cols_ris = Math.ceil(Math.sqrt(n_ris));
+            const rows_ris = Math.ceil(n_ris / cols_ris);
+
+            // Phase Color mapping function (blue -> green -> yellow -> red)
+            const phase = parseFloat(params.theta);
+            const colorVal = new THREE.Color().setHSL((phase / (2 * Math.PI)) * 0.8, 0.9, 0.5);
+
+            const risPanelMat = new THREE.MeshPhysicalMaterial({
+                color: colorVal,
+                emissive: colorVal.clone().multiplyScalar(0.4),
+                roughness: 0.2,
+                metalness: 0.1,
+                transmission: 0.6,
+                thickness: 0.5
+            });
+
+            for (let r = 0; r < rows_ris; r++) {
+                for (let c = 0; c < cols_ris; c++) {
+                    if (r * cols_ris + c >= n_ris) break;
+                    const el = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.05), risPanelMat);
+                    el.position.set((c - (cols_ris - 1) / 2) * 0.6, (r - (rows_ris - 1) / 2) * 0.6, 0);
+                    risGroup.add(el);
+                }
+            }
+        }
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // 3D Render Loop
+        function animate3d() {
+            requestAnimationFrame(animate3d);
+            
+            // Rotate the arrays slightly for a dynamic preview effect
+            txGroup.rotation.y = Math.sin(Date.now() * 0.001) * 0.15;
+            rxGroup.rotation.y = Math.sin(Date.now() * 0.001 + 1) * 0.15;
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate3d();
+
+        // Save camera and controls target state on change
+        controls.addEventListener('change', () => {
+            sessionStorage.setItem('camera_pos', JSON.stringify(camera.position.toArray()));
+            sessionStorage.setItem('controls_target', JSON.stringify(controls.target.toArray()));
+        });
+        
+        // Restore camera state if exists
+        const savedPos = sessionStorage.getItem('camera_pos');
+        const savedTarget = sessionStorage.getItem('controls_target');
+        if (savedPos && savedTarget) {
+            try {
+                const pos = JSON.parse(savedPos);
+                const target = JSON.parse(savedTarget);
+                camera.position.set(pos[0], pos[1], pos[2]);
+                controls.target.set(target[0], target[1], target[2]);
+                controls.update();
+            } catch (e) {
+                console.error("Failed to restore camera state:", e);
+            }
+        }
+
+
+        // ===================== ECHARTS CONFIG =====================
+        const kdeChart = echarts.init(document.getElementById('kde-chart'));
+        const sensChart = echarts.init(document.getElementById('sens-chart'));
+
+        const baseKdeOption = {
+            tooltip: { trigger: 'axis' },
+            grid: { top: 15, bottom: 25, left: 35, right: 15 },
+            xAxis: { 
+                type: 'category', 
+                data: [],
+                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                axisLabel: { color: '#8F9CA2', fontSize: 10 }
+            },
+            yAxis: { 
+                type: 'value',
+                axisLine: { show: false },
+                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                axisLabel: { color: '#8F9CA2', fontSize: 10 }
+            },
+            series: [{
+                data: [],
+                type: 'line',
+                smooth: true,
+                symbol: 'none',
+                lineStyle: { color: '#00D9FF', width: 2.5 },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(0, 217, 255, 0.3)' },
+                        { offset: 1, color: 'rgba(0, 217, 255, 0)' }
+                    ])
+                }
+            }]
+        };
+
+        const baseSensOption = {
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            grid: { top: 10, bottom: 20, left: 75, right: 20 },
+            xAxis: { 
+                type: 'value',
+                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                axisLabel: { color: '#8F9CA2', fontSize: 10 }
+            },
+            yAxis: { 
+                type: 'category', 
+                data: [],
+                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                axisLabel: { color: '#8F9CA2', fontSize: 10 }
+            },
+            series: [{
+                data: [],
+                type: 'bar',
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                        { offset: 0, color: '#7C3AED' },
+                        { offset: 1, color: '#00D9FF' }
+                    ])
+                },
+                label: { show: true, position: 'right', formatter: '{c}', color: '#ffffff', fontSize: 9 }
+            }]
+        };
+
+        kdeChart.setOption(baseKdeOption);
+        sensChart.setOption(baseSensOption);
+
+
+        // ===================== DATA SYNC & API CALLS =====================
+        const isStreamlit = (window.self !== window.top) || window.isStreamlit || (typeof window.initialParams !== 'undefined');
+
+        if (isStreamlit) {
+            // Hide navigation header
+            const navHeader = document.querySelector('nav');
+            if (navHeader) navHeader.style.display = 'none';
+
+            // Change grid layout to 3 columns and hide sidebar
+            const mainGrid = document.querySelector('main');
+            if (mainGrid) {
+                mainGrid.classList.remove('pt-24', 'xl:grid-cols-4');
+                mainGrid.classList.add('pt-4', 'xl:grid-cols-3');
+            }
+            const sidebarPanel = document.getElementById('sidebar-panel');
+            if (sidebarPanel) sidebarPanel.style.display = 'none';
+        }
+
+        function gatherParams() {
+            if (isStreamlit && typeof window.initialParams !== 'undefined') {
+                return window.initialParams;
+            }
+
+            const freq = parseFloat(document.getElementById('freq').value);
+            const txType = document.getElementById('tx_array_type').value;
+            const rxType = document.getElementById('rx_array_type').value;
+            
+            let n_tx, dx_tx, dy_tx, tx_rows, tx_cols;
+            if (txType === "Linear Array") {
+                n_tx = parseInt(document.getElementById('n_tx').value);
+                dx_tx = parseFloat(document.getElementById('d_tx').value);
+                dy_tx = 0.0;
+                tx_rows = 1;
+                tx_cols = n_tx;
+            } else {
+                tx_rows = parseInt(document.getElementById('tx_rows').value);
+                tx_cols = parseInt(document.getElementById('tx_cols').value);
+                n_tx = tx_rows * tx_cols;
+                dx_tx = 0.5;
+                dy_tx = 0.5;
+            }
+
+            let n_rx, dx_rx, dy_rx, rx_rows, rx_cols;
+            if (rxType === "Linear Array") {
+                n_rx = parseInt(document.getElementById('n_rx').value);
+                dx_rx = parseFloat(document.getElementById('d_rx').value);
+                dy_rx = 0.0;
+                rx_rows = 1;
+                rx_cols = n_rx;
+            } else {
+                rx_rows = parseInt(document.getElementById('rx_rows').value);
+                rx_cols = parseInt(document.getElementById('rx_cols').value);
+                n_rx = rx_rows * rx_cols;
+                dx_rx = 0.5;
+                dy_rx = 0.5;
+            }
+
+            const n_ris = parseInt(document.getElementById('n_ris').value);
+            const theta = parseFloat(document.getElementById('theta').value);
+            const snr_db = parseFloat(document.getElementById('snr_db').value);
+            const d_tx_ris = parseFloat(document.getElementById('d_tx_ris').value);
+            const d_ris_rx = parseFloat(document.getElementById('d_ris_rx').value);
+
+            return {
+                freq, n_tx, n_rx, n_ris,
+                dx: dx_rx, dy: dy_rx,
+                snr_db, theta, d_tx_ris, d_ris_rx,
+                tx_array_type: txType, tx_rows, tx_cols, dx_tx, dy_tx,
+                rx_array_type: rxType, rx_rows, rx_cols, dx_rx, dy_rx
+            };
+        }
+
+        async function triggerSimulation() {
+            const params = gatherParams();
+            
+            // Build the 3D geometries
+            buildAntennaArrays(params);
+
+            if (isStreamlit && typeof window.initialMetrics !== 'undefined') {
+                // Read from pre-injected variables
+                const metrics = window.initialMetrics;
+                document.getElementById('metric_se').innerText = metrics.se.toFixed(3);
+                document.getElementById('metric_cap').innerText = metrics.capacity_mbps.toFixed(1);
+                document.getElementById('metric_ber').innerText = metrics.ber.toExponential(2);
+                document.getElementById('metric_power').innerText = metrics.y_power.toFixed(2);
+
+                updateBeams(params, metrics);
+
+                if (typeof window.kdeData !== 'undefined') {
+                    kdeChart.setOption({
+                        xAxis: { data: window.kdeData.x.map(val => val.toFixed(2)) },
+                        series: [{ data: window.kdeData.y }]
+                    });
+                }
+
+                updateSensitivityFromStatic();
+                return;
+            }
+
+            try {
+                // Call prediction API
+                const res = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                });
+                const data = await res.json();
+                
+                // Update KPI Card Numbers
+                document.getElementById('metric_se').innerText = data.metrics.se.toFixed(3);
+                document.getElementById('metric_cap').innerText = data.metrics.capacity_mbps.toFixed(1);
+                document.getElementById('metric_ber').innerText = data.metrics.ber.toExponential(2);
+                document.getElementById('metric_power').innerText = data.metrics.y_power.toFixed(2);
+
+                // Update 3D Beam tubes
+                updateBeams(params, data.metrics);
+
+                // Update KDE Graph
+                kdeChart.setOption({
+                    xAxis: { data: data.kde.x.map(val => val.toFixed(2)) },
+                    series: [{ data: data.kde.y }]
+                });
+
+                // Update Sensitivity Analytics Graph
+                triggerSensitivity(params);
+
+            } catch (e) {
+                console.error("API error during live predict:", e);
+            }
+        }
+
+        function updateSensitivityFromStatic() {
+            if (typeof window.sensData === 'undefined') return;
+            const targetMetric = document.getElementById('sens_metric_select').value;
+            const plotData = window.sensData[targetMetric] || [];
+            
+            // Sort by absolute sensitivity coefficient magnitude (most impactful at top/bottom)
+            const sortedPlotData = [...plotData];
+            sortedPlotData.sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]));
+
+            const categories = sortedPlotData.map(item => item[0]);
+            const values = sortedPlotData.map(item => {
+                const val = parseFloat(item[1].toFixed(4));
+                return {
+                    value: val,
+                    itemStyle: {
+                        color: val >= 0 ? '#00D9FF' : '#FF4A7A' // Cyan for positive, Red/Pink for negative
+                    },
+                    label: {
+                        show: true,
+                        position: val >= 0 ? 'right' : 'left',
+                        formatter: val >= 0 ? '+' + val : '' + val,
+                        color: '#ffffff',
+                        fontSize: 9
+                    }
+                };
+            });
+
+            sensChart.setOption({
+                yAxis: { data: categories },
+                series: [{ data: values }]
+            });
+        }
+
+        async function triggerSensitivity(params) {
+            const targetMetric = document.getElementById('sens_metric_select').value;
+            try {
+                const res = await fetch('/api/sensitivity', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ params, mode: 'differential' })
+                });
+                const data = await res.json();
+                
+                // Parse metrics for chosen target
+                const plotData = data.sens_data[targetMetric] || [];
+                // Sort by absolute sensitivity coefficient magnitude (most impactful at top/bottom)
+                plotData.sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]));
+
+                const categories = plotData.map(item => item[0]);
+                const values = plotData.map(item => {
+                    const val = parseFloat(item[1].toFixed(4));
+                    return {
+                        value: val,
+                        itemStyle: {
+                            color: val >= 0 ? '#00D9FF' : '#FF4A7A' // Cyan for positive, Red/Pink for negative
+                        },
+                        label: {
+                            show: true,
+                            position: val >= 0 ? 'right' : 'left', // Dynamic label alignment to avoid overlap
+                            formatter: val >= 0 ? '+' + val : '' + val,
+                            color: '#ffffff',
+                            fontSize: 9
+                        }
+                    };
+                });
+
+                sensChart.setOption({
+                    yAxis: { data: categories },
+                    series: [{ data: values }]
+                });
+
+            } catch (e) {
+                console.error("API error during sensitivity analysis:", e);
+            }
+        }
+
+        // ===================== UI INTERACTION HANDLERS =====================
+        function toggleArrayInputs(prefix) {
+            const type = document.getElementById(`${prefix}_array_type`).value;
+            if (type === "Linear Array") {
+                document.getElementById(`${prefix}_linear_controls`).classList.remove('hidden');
+                document.getElementById(`${prefix}_rect_controls`).classList.add('hidden');
+            } else {
+                document.getElementById(`${prefix}_linear_controls`).classList.add('hidden');
+                document.getElementById(`${prefix}_rect_controls`).classList.remove('hidden');
+            }
+        }
+
+        // Set listeners
+        document.getElementById('tx_array_type').addEventListener('change', () => { toggleArrayInputs('tx'); triggerSimulation(); });
+        document.getElementById('rx_array_type').addEventListener('change', () => { toggleArrayInputs('rx'); triggerSimulation(); });
+        
+        // Listeners for triggers
+        const inputElements = ['freq', 'n_tx', 'd_tx', 'tx_rows', 'tx_cols', 'n_rx', 'd_rx', 'rx_rows', 'rx_cols', 'n_ris', 'theta', 'snr_db', 'd_tx_ris', 'd_ris_rx'];
+        inputElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', () => {
+                    // Update value badges
+                    if (id === 'n_ris') document.getElementById('n_ris_val').innerText = el.value;
+                    if (id === 'theta') document.getElementById('theta_val').innerText = parseFloat(el.value).toFixed(2);
+                    if (id === 'snr_db') document.getElementById('snr_val').innerText = `${el.value} dB`;
+                    if (id === 'd_tx_ris') document.getElementById('d_tx_ris_val').innerText = `${parseFloat(el.value).toFixed(1)} m`;
+                    if (id === 'd_ris_rx') document.getElementById('d_ris_rx_val').innerText = `${parseFloat(el.value).toFixed(1)} m`;
+                    
+                    triggerSimulation();
+                });
+                el.addEventListener('change', triggerSimulation);
+            }
+        });
+
+        document.getElementById('sens_metric_select').addEventListener('change', () => {
+            if (isStreamlit && typeof window.sensData !== 'undefined') {
+                updateSensitivityFromStatic();
+            } else {
+                const params = gatherParams();
+                triggerSensitivity(params);
+            }
+        });
+
+        // Initialize simulation
+        triggerSimulation();
+    </script>
+</body>
+</html>
